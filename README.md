@@ -142,4 +142,4 @@ gcc -std=c11 -Wall -Wextra math_eval.c -lm -o math_eval
 
 ## License
 
-Provided as-is for educational and experimental use.
+MIT License
