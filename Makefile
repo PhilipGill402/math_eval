@@ -5,11 +5,11 @@ CXX = gcc
 CXXFLAGS = -g -Iinclude
 
 # Sources and objects
-SRC = $(wildcard src/*.c)
-OBJ = $(patsubst src/%.c,src/%.o,$(SRC))
+SRC = $(wildcard *.c)
+OBJ = $(patsubst %.c,%.o,$(SRC))
 
 # Output binary
-TARGET = math_eval 
+TARGET = eval 
 
 # Default rule
 all: $(TARGET)
@@ -19,9 +19,9 @@ $(TARGET): $(OBJ)
 	$(CXX) $(OBJ) -o $(TARGET)
 
 # Compile .cpp to .o
-src/%.o: src/%.cpp
+src/%.o: %.c
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # Clean build artifacts
 clean:
-	rm -f src/*.o $(TARGET)
+	rm -f *.o $(TARGET)
