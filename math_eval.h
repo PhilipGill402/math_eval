@@ -43,6 +43,13 @@ typedef enum TokenType {
     NONE
 } TokenType;
 
+typedef enum ErrorCode {
+    UnknownOperator,
+    UnknownToken,
+    TooManyVariables,
+    NoError
+} ErrorCode;
+
 typedef struct token_t {
     TokenType type;
     const char* val;
@@ -74,6 +81,7 @@ typedef struct eval_ctx {
     int_hash_map_t int_vars;
     double_hash_map_t double_vars;
     equation_t equation;
+    ErrorCode error;
 } eval_ctx;
 
 typedef struct lexer_t {
@@ -90,8 +98,8 @@ void advance_lexer(lexer_t* lexer);
 char peek(lexer_t* lexer);
 int is_defined_function(const char* str);
 int is_defined_variable(lexer_t* lexer, const char* str);
-token_t look_for_function_or_var(lexer_t* lexer);
-token_t get_next_token(lexer_t* lexer);
+token_t look_for_function_or_var(eval_ctx* context, lexer_t* lexer);
+token_t get_next_token(eval_ctx* context, lexer_t* lexer);
 
 //stack functions
 token_stack_t create_stack();
@@ -107,8 +115,8 @@ int is_operator(token_t token);
 int is_right_associative(token_t token);
 token_t* infix_to_prefix(token_stack_t* stack, int num_tokens);
 token_stack_t parse(eval_ctx* context, const char* expr);
-token_t handle_integer(token_t current_token, token_t operand1, token_t operand2);
-token_t handle_double(token_t current_token, token_t operand1, token_t operand2);
+token_t handle_integer(eval_ctx* context, token_t current_token, token_t operand1, token_t operand2);
+token_t handle_double(eval_ctx* context, token_t current_token, token_t operand1, token_t operand2);
 token_t evaluate(eval_ctx* context, token_stack_t* prefix);
 
 //my hashmap functions
@@ -119,8 +127,8 @@ int int_get_index(int_hash_map_t* map, const char key[]);
 int double_get_index(double_hash_map_t* map, const char key[]);
 void int_set(int_hash_map_t* map, const char key[], int new_val);
 void double_set(double_hash_map_t* map, const char key[], double new_val);
-void int_insert(int_hash_map_t* map, const char key[], int value);
-void double_insert(double_hash_map_t* map, const char key[], double value);
+void int_insert(eval_ctx* context, const char key[], int value);
+void double_insert(eval_ctx* context, const char key[], double value);
 int int_get(int_hash_map_t* map, const char key[]);
 double double_get(double_hash_map_t* map, const char key[]);
 

@@ -52,7 +52,7 @@ int is_defined_variable(lexer_t* lexer, const char* str) {
     return 0;
 }
 
-token_t look_for_function_or_var(lexer_t* lexer) {
+token_t look_for_function_or_var(eval_ctx* context, lexer_t* lexer) {
     int size = 10; 
     char* val = malloc(sizeof(char) * size);
     int str_pos = 0;
@@ -80,12 +80,14 @@ token_t look_for_function_or_var(lexer_t* lexer) {
     } else if (is_defined_variable(lexer, val)) {
         return (token_t){ VARIABLE, val };
     } else {
+        context->error = UnknownToken;
+        printf("Could not match token %s to a function or variable\n", val);
         return (token_t){ UNKNOWN, val };
     }
 
 }
 
-token_t get_next_token(lexer_t* lexer) {
+token_t get_next_token(eval_ctx* context, lexer_t* lexer) {
     token_t token;
 
     while (lexer->current_char != '\0') {
@@ -174,7 +176,7 @@ token_t get_next_token(lexer_t* lexer) {
             return token;
         } else {
             //normal char, look for built in functions or variables
-            return look_for_function_or_var(lexer);
+            return look_for_function_or_var(context, lexer);
         }
     }
 
@@ -370,7 +372,7 @@ token_t make_float_token_from_float(double x) {
     return (token_t){ FLOAT, s };
 }
 
-token_t handle_integer(token_t current_token, token_t operand1, token_t operand2) {
+token_t handle_integer(eval_ctx* context, token_t current_token, token_t operand1, token_t operand2) {
     int val1 = atoi(operand1.val);
     int val2 = atoi(operand2.val);
     token_t new_operand;
@@ -389,6 +391,8 @@ token_t handle_integer(token_t current_token, token_t operand1, token_t operand2
             new_operand = make_int_token_from_int(my_pow(val1, val2)); 
             break;
         default:
+            context->error = UnknownOperator;
+            printf("Could not match token %s to an operator\n", current_token.val);
             new_operand = (token_t){ UNKNOWN, "UNKNOWN" };
             break;
     }
@@ -396,7 +400,7 @@ token_t handle_integer(token_t current_token, token_t operand1, token_t operand2
     return new_operand;
 }
 
-token_t handle_double(token_t current_token, token_t operand1, token_t operand2) {
+token_t handle_double(eval_ctx* context, token_t current_token, token_t operand1, token_t operand2) {
     double val1 = atof(operand1.val);
     double val2 = atof(operand2.val);
     token_t new_operand;
@@ -418,6 +422,8 @@ token_t handle_double(token_t current_token, token_t operand1, token_t operand2)
             new_operand = make_float_token_from_float(pow(val1, val2)); 
             break;
         default:
+            context->error = UnknownOperator;
+            printf("Could not match token %s to an operator\n", current_token.val);
             new_operand = (token_t){ UNKNOWN, "UNKNOWN" };
             break;
     }
@@ -439,7 +445,7 @@ token_t handle_negation(token_t operand) {
     return new_operand;
 }
 
-token_t handle_function(token_t func, token_t operand) {
+token_t handle_function(eval_ctx* context, token_t func, token_t operand) {
     double val = atof(operand.val);
     double result;
     if (strcmp(func.val, "sin") == 0) {
@@ -451,6 +457,8 @@ token_t handle_function(token_t func, token_t operand) {
     } else if (strcmp(func.val, "sqrt") == 0) {
         result = sqrt(val);
     } else {
+        context->error = UnknownToken;
+        printf("Could not find function of name: %s\n", func.val);
         return (token_t){ UNKNOWN, "UNKNOWN FUNCTION" };
     }
 
@@ -469,17 +477,17 @@ token_t evaluate(eval_ctx* context, token_stack_t* prefix) {
                 push_back(&operands, new_operand);
             } else if (current_token.type == FUNCTION) {
                 token_t operand = pop(&operands);
-                token_t new_operand = handle_function(current_token, operand);
+                token_t new_operand = handle_function(context, current_token, operand);
                 push_back(&operands, new_operand);
             } else {
                 token_t operand1 = pop(&operands);
                 token_t operand2 = pop(&operands);
 
                 if (operand1.type == INTEGER && operand2.type == INTEGER && current_token.type != DIV) {
-                    token_t result = handle_integer(current_token, operand1, operand2);
+                    token_t result = handle_integer(context, current_token, operand1, operand2);
                     push_back(&operands, result);
                 } else {
-                    token_t result = handle_double(current_token, operand1, operand2);
+                    token_t result = handle_double(context, current_token, operand1, operand2);
                     push_back(&operands, result);
                 }
             }
@@ -493,6 +501,8 @@ token_t evaluate(eval_ctx* context, token_stack_t* prefix) {
                 double val = int_get(&context->int_vars, current_token.val);
                 operand = make_float_token_from_float(val);
             } else {
+                context->error = UnknownToken;
+                printf("Could not find variable of name: %s\n", current_token.val);
                 operand = (token_t){ UNKNOWN, "UNKNOWN VARIABLE" };
             }
             push_back(&operands, operand); 
@@ -512,7 +522,7 @@ token_stack_t parse(eval_ctx* context, const char* expr) {
     int num_tokens = 0;
 
     do {
-        token = get_next_token(&lexer);
+        token = get_next_token(context, &lexer);
         
         if (token.type == NONE) {
             break;
@@ -589,13 +599,29 @@ void double_set(double_hash_map_t* map, const char key[], double new_val) {
     map->values[idx] = new_val;
 }
 
-void int_insert(int_hash_map_t* map, const char key[], int value) {
+void int_insert(eval_ctx* context, const char key[], int value) {
+    int_hash_map_t* map = &context->int_vars; 
+
+    if (map->size > MAX_DICT_SIZE) {
+        context->error = TooManyVariables;
+        printf("Could not insert another variable, max number of variables is %d", MAX_DICT_SIZE);
+        return;
+    } 
+
     strncpy(map->keys[map->size], key, 100); 
     map->values[map->size] = value;
     map->size++;
 }
 
-void double_insert(double_hash_map_t* map, const char key[], double value) {
+void double_insert(eval_ctx* context, const char key[], double value) {
+    double_hash_map_t* map = &context->double_vars; 
+
+    if (map->size > MAX_DICT_SIZE) {
+        context->error = TooManyVariables;
+        printf("Could not insert another variable, max number of variables is %d", MAX_DICT_SIZE);
+        return;
+    }
+
     strncpy(map->keys[map->size], key, 100);
     map->values[map->size] = value;
     map->size++;
@@ -628,16 +654,17 @@ eval_ctx eval_create_context() {
     context.int_vars = create_int_hash_map();
     context.double_vars = create_double_hash_map();
     context.equation = (equation_t){ create_stack() };
+    context.error = NoError;
 
     return context;
 }
 
 void eval_create_int_var(eval_ctx* context, const char* name, int val) {
-    int_insert(&context->int_vars, name, val);  
+    int_insert(context, name, val);  
 }
 
 void eval_create_double_var(eval_ctx* context, const char* name, double val) {
-    double_insert(&context->double_vars, name, val); 
+    double_insert(context, name, val); 
 }
 
 void eval_set_var_int(eval_ctx* context, const char* name, int val) {
@@ -647,12 +674,12 @@ void set_var_double(eval_ctx* context, const char* name, double val) {
     double_set(&context->double_vars, name, val);
 }
 
-void create_equation(eval_ctx* context, const char* equation) {
+void eval_create_equation(eval_ctx* context, const char* equation) {
     token_stack_t prefix = parse(context, equation);
     equation_t new_equation = (equation_t) { prefix };
     context->equation = new_equation; 
 }
 
-double solve(eval_ctx* context) {
+double eval_solve(eval_ctx* context) {
     return atof(evaluate(context, &context->equation.prefix).val);
 }
