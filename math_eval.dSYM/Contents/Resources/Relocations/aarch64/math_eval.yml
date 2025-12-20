@@ -1,0 +1,5 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     '/Users/philipgill/Developer/c/math_eval/math_eval'
+relocations:     []
+...

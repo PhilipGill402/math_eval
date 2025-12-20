@@ -683,3 +683,16 @@ void eval_create_equation(eval_ctx* context, const char* equation) {
 double eval_solve(eval_ctx* context) {
     return atof(evaluate(context, &context->equation.prefix).val);
 }
+
+int main() {
+    eval_ctx ctx = eval_create_context();
+
+    eval_create_var(&ctx, "x", 0.5f);
+    eval_create_var(&ctx, "y", 2.5f);
+    eval_create_equation(&ctx, "sin(x)^y");
+    
+    double result = eval_solve(&ctx);
+
+    printf("Result: %f\n", result);
+    return 0;  
+}
