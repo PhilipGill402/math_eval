@@ -656,12 +656,3 @@ void create_equation(eval_ctx* context, const char* equation) {
 double solve(eval_ctx* context) {
     return atof(evaluate(context, &context->equation.prefix).val);
 }
-
-int main(int argc, char* argv[]) {
-    eval_ctx context = eval_create_context();
-    eval_create_var(&context, "x", 10);
-    create_equation(&context, argv[1]);
-
-    printf("%f\n", solve(&context)); 
-    return 0;
-}
