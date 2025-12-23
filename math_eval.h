@@ -8,7 +8,7 @@
 
 #define eval_create_var(context, name, value) _Generic((value), \
         int : eval_create_int_var,       \
-        double : eval_create_int_var,    \
+        double : eval_create_double_var,    \
         float:  eval_create_double_var,  \
         long:   eval_create_int_var,     \
         short:  eval_create_int_var,     \
@@ -17,7 +17,7 @@
 
 #define eval_set_var(context, name, value) _Generic((value), \
         int : eval_set_int_var,       \
-        double : eval_set_int_var,    \
+        double : eval_set_double_var,    \
         float:  eval_set_double_var,  \
         long:   eval_set_int_var,     \
         short:  eval_set_int_var,     \
@@ -52,7 +52,8 @@ typedef enum ErrorCode {
 
 typedef struct token_t {
     TokenType type;
-    const char* val;
+    char* val;
+    int needs_to_be_freed;
 } token_t;
 
 typedef struct token_stack_t {
@@ -100,14 +101,17 @@ int is_defined_function(const char* str);
 int is_defined_variable(lexer_t* lexer, const char* str);
 token_t look_for_function_or_var(eval_ctx* context, lexer_t* lexer);
 token_t get_next_token(eval_ctx* context, lexer_t* lexer);
+token_t token_clone(token_t* token);
+void token_free(token_t* token);
 
 //stack functions
 token_stack_t create_stack();
-void push_back(token_stack_t* stack, token_t token);
+void push_back(token_stack_t* stack, token_t* token);
 token_t pop(token_stack_t* stack);
 token_t top(token_stack_t* stack);
 token_stack_t reverse_stack(token_stack_t* stack);
 void print_stack(token_stack_t* stack);
+void stack_free(token_stack_t* stack);
 
 //parser functions
 int operator_precedence(token_t token);
@@ -141,6 +145,8 @@ void eval_create_int_var(eval_ctx* context, const char* name, int val);
 void eval_create_double_var(eval_ctx* context, const char* name, double val);
 void eval_set_var_int(eval_ctx* context, const char* name, int val);
 void set_var_double(eval_ctx* context, const char* name, double val);
-void create_equation(eval_ctx* context, const char* equation);
-double solve(eval_ctx* context);
+void eval_create_equation(eval_ctx* context, const char* equation);
+double eval_solve(eval_ctx* context);
+void eval_free(eval_ctx* context); 
+
 

@@ -76,13 +76,13 @@ token_t look_for_function_or_var(eval_ctx* context, lexer_t* lexer) {
     val[str_pos] = '\0';
      
     if (is_defined_function(val)) {
-        return (token_t){ FUNCTION, val };
+        return (token_t){ FUNCTION, val, 1 };
     } else if (is_defined_variable(lexer, val)) {
-        return (token_t){ VARIABLE, val };
+        return (token_t){ VARIABLE, val, 1 };
     } else {
         context->error = UnknownToken;
         printf("Could not match token %s to a function or variable\n", val);
-        return (token_t){ UNKNOWN, val };
+        return (token_t){ UNKNOWN, val, 1 };
     }
 
 }
@@ -139,39 +139,39 @@ token_t get_next_token(eval_ctx* context, lexer_t* lexer) {
                 }
 
                 val[len] = '\0';
-                token = (token_t){ FLOAT, val };
+                token = (token_t){ FLOAT, val, 1 };
                 return token;
             }
 
             val[len] = '\0';
-            token = (token_t){ INTEGER, val };
+            token = (token_t){ INTEGER, val, 1 };
             return token;
         } else if (lexer->current_char == '+') {
-            token = (token_t){ ADD, "+" };
+            token = (token_t){ ADD, "+", 0 };
             advance_lexer(lexer);
             return token;
         } else if (lexer->current_char == '-') {
-            token = (token_t){ SUB, "-" };
+            token = (token_t){ SUB, "-", 0 };
             advance_lexer(lexer);
             return token;
         } else if (lexer->current_char == '*') {
-            token = (token_t){ MUL, "*" };
+            token = (token_t){ MUL, "*", 0 };
             advance_lexer(lexer);
             return token;
         } else if (lexer->current_char == '/') {
-            token = (token_t){ DIV, "/" };
+            token = (token_t){ DIV, "/", 0 };
             advance_lexer(lexer);
             return token;
         } else if (lexer->current_char == '^') {
-            token = (token_t){ POW, "^" };
+            token = (token_t){ POW, "^", 0 };
             advance_lexer(lexer);
             return token;
         } else if (lexer->current_char == '(') {
-            token = (token_t){ LPAREN, "(" };
+            token = (token_t){ LPAREN, "(", 0 };
             advance_lexer(lexer);
             return token;
         } else if (lexer->current_char == ')') {
-            token = (token_t){ RPAREN, ")" };
+            token = (token_t){ RPAREN, ")", 0 };
             advance_lexer(lexer);
             return token;
         } else {
@@ -180,8 +180,28 @@ token_t get_next_token(eval_ctx* context, lexer_t* lexer) {
         }
     }
 
-    token = (token_t){ NONE, "\0" };
+    token = (token_t){ NONE, "\0", 0 };
     return token;
+}
+
+void token_free(token_t* token) {
+    if (token && token->needs_to_be_freed == 1 && token->val) {
+        free(token->val);
+        token->val = NULL;
+        token->needs_to_be_freed = 0;
+    }
+}
+
+token_t token_clone(token_t* token) {
+    token_t new_token; 
+    
+    if (token->needs_to_be_freed && token->val) {
+        new_token.type = token->type; 
+        new_token.val = strdup(token->val);
+        new_token.needs_to_be_freed = 1;
+    }
+
+    return new_token;
 }
 
 /* ***STACK FUNCTIONS*** */
@@ -194,27 +214,33 @@ token_stack_t create_stack() {
     return stack;
 }
 
-void push_back(token_stack_t* stack, token_t token) {
+void push_back(token_stack_t* stack, token_t* token) {
     //resizing if needed
     if (stack->length >= stack->capacity) {
         stack->tokens = realloc(stack->tokens, sizeof(token_t) * stack->capacity*2);
         stack->capacity *= 2;
     }
     
-    stack->tokens[stack->length] = token;
+    token_t new_token = { token->type, token->val, token->needs_to_be_freed }; 
+
+    stack->tokens[stack->length] = new_token;
     stack->length++;
+
+    //transfer ownership of the token passed in to the new token in the stack
+    token->needs_to_be_freed = 0;
+    token->val = NULL;
 }
 token_t pop(token_stack_t* stack) {
     //empty
     if (stack->length == 0) {
-        return (token_t){ NONE, "\0" };
+        return (token_t){ NONE, "\0", 0 };
     } 
 
     token_t token = stack->tokens[stack->length - 1];
     stack->length--;
     
-    //we are at a quater capacity so downsize
-    if (stack->length < (int)(stack->capacity / 4)) {
+    //we are at a quarter capacity so downsize
+    if (stack->capacity > 10 && stack->length < (int)(stack->capacity / 4)) {
         stack->tokens = realloc(stack->tokens, sizeof(token_t) * (int)(stack->capacity / 4));
         stack->capacity = (int)(stack->capacity / 4);
     }
@@ -224,7 +250,7 @@ token_t pop(token_stack_t* stack) {
 
 token_t top(token_stack_t* stack) {
     if (stack->length == 0) {
-        return (token_t){ NONE, "\0" };
+        return (token_t){ NONE, "\0", 0 };
     }
 
     return stack->tokens[stack->length - 1];
@@ -233,7 +259,8 @@ token_t top(token_stack_t* stack) {
 token_stack_t reverse_stack(token_stack_t* stack){
     token_stack_t new_stack = create_stack(); 
     while (stack->length != 0) {
-        push_back(&new_stack, pop(stack));
+        token_t token = pop(stack);
+        push_back(&new_stack, &token);
     }
 
     return new_stack;
@@ -247,6 +274,21 @@ void print_stack(token_stack_t* stack) {
     }
     print_token(&stack->tokens[stack->length - 1]);
     printf("]");
+}
+
+void stack_free(token_stack_t* stack) {
+    if (stack && stack->tokens) {
+        //free each token in the stack before freeing the stack itself
+        for (int i = 0; i < stack->length; i++) {
+            token_free(&stack->tokens[i]);
+        }
+
+        //freeing the stack
+        free(stack->tokens);
+        stack->tokens = NULL;
+        stack->length = 0;
+        stack->capacity = 0;
+    }
 }
 
 /* ***PARSER FUNCTIONS*** */
@@ -307,10 +349,10 @@ token_t* infix_to_prefix(token_stack_t* stack, int num_tokens) {
         token_t token = stack->tokens[i];
         
         if (token.type == INTEGER || token.type == FLOAT || token.type == VARIABLE) {
-            arr[arr_len] = token;
+            arr[arr_len] = token_clone(&token);
             arr_len++;
         } else if (token.type == RPAREN) {
-            push_back(&operators, token);
+            push_back(&operators, &token);
         } else if (token.type == LPAREN) {
             while (top(&operators).type != NONE && top(&operators).type != RPAREN) {
                 arr[arr_len] = pop(&operators);
@@ -325,7 +367,7 @@ token_t* infix_to_prefix(token_stack_t* stack, int num_tokens) {
             //checks if a function is to the left of the parenthesis
             if (i > 0 && stack->tokens[i - 1].type == FUNCTION) {
                 //add the function and skip the next token 
-                arr[arr_len] = stack->tokens[i - 1];
+                arr[arr_len] = token_clone(&stack->tokens[i - 1]);
                 arr_len++;
                 i--;
             }
@@ -342,14 +384,17 @@ token_t* infix_to_prefix(token_stack_t* stack, int num_tokens) {
                 arr_len++;
             }
 
-            push_back(&operators, token);
+            push_back(&operators, &token);
         }
     }
     
     while (operators.length > 0) {
         arr[arr_len] = pop(&operators);
         arr_len++;
+        arr[arr_len].needs_to_be_freed = 0;
     }
+    
+    stack_free(&operators);
 
     return arr;
 }
@@ -360,7 +405,7 @@ token_t make_int_token_from_int(int x) {
     char* s = malloc((size_t)needed + 1);
     snprintf(s, (size_t)needed + 1, "%d", x);
     
-    return (token_t){ INTEGER, s };
+    return (token_t){ INTEGER, s, 1 };
 }
 
 token_t make_float_token_from_float(double x) {
@@ -369,7 +414,7 @@ token_t make_float_token_from_float(double x) {
     char* s = malloc((size_t)needed + 1);
     snprintf(s, (size_t)needed + 1, "%f", x);
 
-    return (token_t){ FLOAT, s };
+    return (token_t){ FLOAT, s, 1 };
 }
 
 token_t handle_integer(eval_ctx* context, token_t current_token, token_t operand1, token_t operand2) {
@@ -393,7 +438,7 @@ token_t handle_integer(eval_ctx* context, token_t current_token, token_t operand
         default:
             context->error = UnknownOperator;
             printf("Could not match token %s to an operator\n", current_token.val);
-            new_operand = (token_t){ UNKNOWN, "UNKNOWN" };
+            new_operand = (token_t){ UNKNOWN, "UNKNOWN", 0 };
             break;
     }
     
@@ -424,7 +469,7 @@ token_t handle_double(eval_ctx* context, token_t current_token, token_t operand1
         default:
             context->error = UnknownOperator;
             printf("Could not match token %s to an operator\n", current_token.val);
-            new_operand = (token_t){ UNKNOWN, "UNKNOWN" };
+            new_operand = (token_t){ UNKNOWN, "UNKNOWN", 0 };
             break;
     }
 
@@ -459,7 +504,7 @@ token_t handle_function(eval_ctx* context, token_t func, token_t operand) {
     } else {
         context->error = UnknownToken;
         printf("Could not find function of name: %s\n", func.val);
-        return (token_t){ UNKNOWN, "UNKNOWN FUNCTION" };
+        return (token_t){ UNKNOWN, "UNKNOWN FUNCTION", 0 };
     }
 
     return make_float_token_from_float(result);
@@ -474,21 +519,21 @@ token_t evaluate(eval_ctx* context, token_stack_t* prefix) {
             if (current_token.type == NEG) {
                 token_t operand = pop(&operands);
                 token_t new_operand = handle_negation(operand);
-                push_back(&operands, new_operand);
+                push_back(&operands, &new_operand);
             } else if (current_token.type == FUNCTION) {
                 token_t operand = pop(&operands);
                 token_t new_operand = handle_function(context, current_token, operand);
-                push_back(&operands, new_operand);
+                push_back(&operands, &new_operand);
             } else {
                 token_t operand1 = pop(&operands);
                 token_t operand2 = pop(&operands);
 
                 if (operand1.type == INTEGER && operand2.type == INTEGER && current_token.type != DIV) {
                     token_t result = handle_integer(context, current_token, operand1, operand2);
-                    push_back(&operands, result);
+                    push_back(&operands, &result);
                 } else {
                     token_t result = handle_double(context, current_token, operand1, operand2);
-                    push_back(&operands, result);
+                    push_back(&operands, &result);
                 }
             }
         } else if (current_token.type == VARIABLE) {
@@ -498,19 +543,21 @@ token_t evaluate(eval_ctx* context, token_stack_t* prefix) {
                 int val = int_get(&context->int_vars, current_token.val);
                 operand = make_int_token_from_int(val);
             } else if (double_get_index(&context->double_vars, current_token.val) != -1) {
-                double val = int_get(&context->int_vars, current_token.val);
+                double val = double_get(&context->double_vars, current_token.val);
                 operand = make_float_token_from_float(val);
             } else {
                 context->error = UnknownToken;
                 printf("Could not find variable of name: %s\n", current_token.val);
-                operand = (token_t){ UNKNOWN, "UNKNOWN VARIABLE" };
+                operand = (token_t){ UNKNOWN, "UNKNOWN VARIABLE", 0 };
             }
-            push_back(&operands, operand); 
+            push_back(&operands, &operand); 
         } else {
-            push_back(&operands, current_token);
+            push_back(&operands, &current_token);
         }
     }
     token_t result = pop(&operands);
+
+    stack_free(&operands);
     return result;
 }
 
@@ -530,7 +577,7 @@ token_stack_t parse(eval_ctx* context, const char* expr) {
             num_tokens++;
         }
 
-        push_back(&token_stack, token);
+        push_back(&token_stack, &token);
          
     } while (token.type != NONE);
     
@@ -538,29 +585,32 @@ token_stack_t parse(eval_ctx* context, const char* expr) {
     token_stack_t prefix = create_stack();
 
     for (int i = num_tokens - 1; i >= 0; i--) {
-        push_back(&prefix, prefix_arr[i]); 
+        push_back(&prefix, &prefix_arr[i]); 
     }
+    
+    stack_free(&token_stack);
+    free(prefix_arr);
 
     return prefix;
 }
 
 /* ***HASHMAP FUNCTIONS *** */
 int_hash_map_t create_int_hash_map() {
-    int_hash_map_t map;
+    int_hash_map_t map = { 0 };
     map.size = 0;
 
     return map;
 }
 
 double_hash_map_t create_double_hash_map() {
-    double_hash_map_t map;
+    double_hash_map_t map = { 0 };
     map.size = 0;
 
     return map;
 }
 
 int int_get_index(int_hash_map_t* map, const char key[]) {
-    for (int i = 0; i < MAX_DICT_SIZE; i++) {
+    for (int i = 0; i < map->size; i++) {
         if (strcmp(map->keys[i], key) == 0) {
             return i;
         }
@@ -570,7 +620,7 @@ int int_get_index(int_hash_map_t* map, const char key[]) {
 }
 
 int double_get_index(double_hash_map_t* map, const char key[]) {
-    for (int i = 0; i < MAX_DICT_SIZE; i++) {
+    for (int i = 0; i < map->size; i++) {
         if (strcmp(map->keys[i], key) == 0) {
             return i;
         }
@@ -681,7 +731,14 @@ void eval_create_equation(eval_ctx* context, const char* equation) {
 }
 
 double eval_solve(eval_ctx* context) {
-    return atof(evaluate(context, &context->equation.prefix).val);
+    token_t result = evaluate(context, &context->equation.prefix);
+    double ans = atof(result.val);
+    token_free(&result);
+    return ans;
+}
+
+void eval_free(eval_ctx* context) {
+    stack_free(&context->equation.prefix); 
 }
 
 int main() {
@@ -689,10 +746,12 @@ int main() {
 
     eval_create_var(&ctx, "x", 0.5f);
     eval_create_var(&ctx, "y", 2.5f);
-    eval_create_equation(&ctx, "sin(x)^y");
+    eval_create_equation(&ctx, "sin(x) + cos(y) + sqrt(x) * tan(y)");
     
     double result = eval_solve(&ctx);
 
     printf("Result: %f\n", result);
+
+    eval_free(&ctx);
     return 0;  
 }
