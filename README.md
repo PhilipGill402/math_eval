@@ -1,5 +1,7 @@
 # Math Eval (C Expression Evaluator)
 
+**NOTE:** This library has been updated and can now be found [here](https://github.com/PhilipGill402/differentiation_library)
+
 A small C library for parsing and evaluating mathematical expressions with support for:
 
 - Infix notation input (e.g. `sin(x) + 3*4`)
